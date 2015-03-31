@@ -42,8 +42,16 @@ type WebsocketServer struct {
 	BinarySerializer Serializer
 }
 
+type WebsocketServerOption func (server *WebsocketServer)
+
+func CheckOriginPolicy(policy func(r *http.Request) bool) WebsocketServerOption {
+	return func (server *WebsocketServer) {
+		server.upgrader.CheckOrigin = policy
+	}
+}
+
 // Creates a new WebsocketServer from a map of realms
-func NewWebsocketServer(realms map[string]Realm) (*WebsocketServer, error) {
+func NewWebsocketServer(realms map[string]Realm, options ...WebsocketServerOption) (*WebsocketServer, error) {
 	log.Println("NewWebsocketServer")
 	r := NewDefaultRouter()
 	for uri, realm := range realms {
@@ -51,18 +59,18 @@ func NewWebsocketServer(realms map[string]Realm) (*WebsocketServer, error) {
 			return nil, err
 		}
 	}
-	s := newWebsocketServer(r)
+	s := newWebsocketServer(r, options...)
 	return s, nil
 }
 
 // Creates a new WebsocketServer with a single basic realm
-func NewBasicWebsocketServer(uri string) *WebsocketServer {
+func NewBasicWebsocketServer(uri string, options ...WebsocketServerOption) *WebsocketServer {
 	log.Println("NewBasicWebsocketServer")
-	s, _ := NewWebsocketServer(map[string]Realm{uri: {}})
+	s, _ := NewWebsocketServer(map[string]Realm{uri: {}}, options...)
 	return s
 }
 
-func newWebsocketServer(r Router) *WebsocketServer {
+func newWebsocketServer(r Router, options ...WebsocketServerOption) *WebsocketServer {
 	s := &WebsocketServer{
 		Router:    r,
 		protocols: make(map[string]protocol),
@@ -70,6 +78,9 @@ func newWebsocketServer(r Router) *WebsocketServer {
 	s.upgrader = &websocket.Upgrader{}
 	s.RegisterProtocol(jsonWebsocketProtocol, websocket.TextMessage, new(JSONSerializer))
 	s.RegisterProtocol(msgpackWebsocketProtocol, websocket.BinaryMessage, new(MessagePackSerializer))
+	for _, o := range options {
+		o(s)
+	}
 	return s
 }
 
